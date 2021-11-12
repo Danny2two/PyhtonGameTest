@@ -1,14 +1,14 @@
-
 import arcade
 import random
 import math
 
 # --- Constants ---
 Player_scale = 0.3
-Floor_scale = 0.5
+Floor_scale = 0.75
 Overlay_scale = 0.5
 
 Tourch_Particle_num = 15
+Weather_Particle_num = 100
 
 TEXTURE_LEFT = 1
 TEXTURE_RIGHT = 0
@@ -17,19 +17,16 @@ SW = 1200
 SH = 800
 
 
-
 class Backround_layer_0(arcade.Sprite):
-    def __init__(self,row,collum):
-        super().__init__("assets/backrounds/floor.png", Floor_scale)
+    def __init__(self, row, collum):
+        super().__init__("assets/backrounds/city_background.png", Floor_scale)
         self.row = row
         self.collum = collum
-        self.center_x = (100 + (self.collum * 200))
-        self.center_y = (100 + (self.row * 200))
-
+        self.center_x = (self.width/2 + (self.collum * self.width))
+        self.center_y = (self.height/2 + (self.row * self.height))
 
     def update(self):
         pass
-
 
 
 class Player(arcade.Sprite):
@@ -52,16 +49,23 @@ class Player(arcade.Sprite):
         self.change_x = 0
         self.change_y = 0
 
-        self.jump= False
+        self.jump = False
         self.jump_timer = 0
 
         self.torch_particle_offset_x = -30
         self.torch_particle_offset_y = 20
 
-
     def update(self):
         self.center_x += self.change_x
-        self.center_y += self.change_y
+
+        if self.center_y > 100:
+            self.change_y -= (9.8 / 30)
+            self.center_y += self.change_y
+        elif self.center_y < 100:
+            self.change_y = 0
+            self.center_y = 100
+        else:
+            self.center_y += self.change_y
 
         if self.change_x < 0:
             self.texture = self.textures[TEXTURE_LEFT]
@@ -71,27 +75,8 @@ class Player(arcade.Sprite):
             self.torch_particle_offset_x = 30
 
 
-
-#this is the code for the jump animation and it sucks
-        if self.jump_timer > 0:
-            self.jump_timer -= 1
-        #elif self.jump_timer == 0:
-
-        if self.scale > Player_scale:
-            self.scale -= 0.02
-            self.jump = False
-        else:
-            self.scale = Player_scale
-
-        if self.jump:
-            #print(self.jump)
-            self.scale += (0.05 * self.jump_timer)
-
-
-
-
 class Overlay(arcade.Sprite):
-    def __init__(self,x,y,scale,flicker):
+    def __init__(self, x, y, scale, flicker):
         super().__init__("assets/overlays/torch_overlay.png")
         self.center_x = x
         self.center_y = y
@@ -100,102 +85,126 @@ class Overlay(arcade.Sprite):
 
     def update(self):
         if self.flicker:
-            self.scale = (Overlay_scale + (.005 * random.randint(-5,5)))
+            self.scale = (Overlay_scale + (.005 * random.randint(-5, 5)))
+
 
 class Torchparticle(arcade.Sprite):
-    def __init__(self,x,y):
+    def __init__(self, x, y):
         super().__init__("assets/player/torch_particle.png")
         self.center_x = x
         self.center_y = y
-        self.change_x = (0.1 * random.randrange(-20,20,1))
+        self.change_x = (0.1 * random.randrange(-20, 20, 1))
         self.change_y = (0.1 * random.randrange(-50, 50, 1))
-        self.scale = (0.1 * random.randrange(1,6,1))
-        self.change_rot = random.randint(-30,30)
-        self.change_alpha = random.randint(-2,-1)
+        self.scale = (0.1 * random.randrange(1, 3, 1))
+        self.change_rot = random.randint(-30, 30)
+        self.change_alpha = (0.1 * random.randint(-100, -10))
 
     def update(self):
-        self.change_y -= 0.2
+        self.change_y += (0.2 * random.randint(-2,2))
         self.center_x += self.change_x
         self.center_y += self.change_y
         self.angle += self.change_rot
-        self.alpha += self.change_alpha
+
+        if self.alpha > abs(self.change_alpha):
+            self.alpha += self.change_alpha
+        else:
+            self.alpha = 0
 
 
+class Rain(arcade.Sprite):
+    def __init__(self,x,y):
+        super().__init__("assets/overlays/rain_particle.png")
+        self.center_x = x
+        self.center_y = y
+        speed_seed = 0.1 * random.randint(10,50)
+        self.change_x = -6 * speed_seed
+        self.change_y = -10 *speed_seed
+        self.angle = -math.degrees(math.tan(self.change_x/self.change_y))
+        self.scale = 2
 
+    def update(self):
+        self.center_x += self.change_x
+        self.center_y += self.change_y
 
-
-
-
-
-
+        if self.bottom <= (100 + random.randint(-20,20)):
+            self.bottom = SH + random.randint(5,500)
+            self.center_x = random.randint(50,SW + 400)
 
 
 # ------MyGame Class--------------
 class MyGame(arcade.Window):
     _vsync = True
+
     def __init__(self, SW, SH, title):
         super().__init__(SW, SH, title)
         self.set_mouse_visible(False)
+        self.is_dark = False
 
-        #Make Player
+
+        # Make Player
         self.player = Player()
 
-        #Make Overlay
-        self.overlay = Overlay(SW/2, SH/2,Overlay_scale,True)
-        self.overlay2 = Overlay(SW/2, SH/2,1.5,False)
+        # Make Overlay
+        self.overlay = Overlay(SW / 2, SH / 2, Overlay_scale, True)
+        self.overlay2 = Overlay(SW / 2, SH / 2, 1.5, False)
 
-#generates background tiles, does math for determining how many are needed in x and y
-        self.background_tile_list = []
+        self.weather_particle_list = arcade.SpriteList()
+        for i in range(Weather_Particle_num):
+            i = Rain(random.randint(0,SW +200), SH + random.randint(10,500))
+            self.weather_particle_list.append(i)
+
+        # generates background tiles, does math for determining how many are needed in x and y
+        self.background_tile_list = arcade.SpriteList()
+        self.background_tile_list.is_static = True
         y = -1
-        for i in range(0, SH, 200):
+        for i in range(0, SH, 1600):
             y += 1
             x = -1
-            for i in range(0, SW, 200):
+            for i in range(0, SW, 1200):
                 x += 1
-                background = Backround_layer_0(y,x)
+                background = Backround_layer_0(y, x)
                 self.background_tile_list.append(background)
 
-        self.particle_list = []
+        #generates torch particles
+        self.particle_list = arcade.SpriteList()
         for i in range(Tourch_Particle_num):
-            particle = Torchparticle(SW/2,SH/2)
+            particle = Torchparticle(SW / 2, SH / 2)
             self.particle_list.append(particle)
-
-
-
 
     def reset(self):
         pass
 
     def on_draw(self):
-        #draws background tiles
-        for i in self.background_tile_list:
-            i.draw()
+        # draws background tiles
+        self.background_tile_list.draw()
 
         self.player.draw()
 
-        self.overlay.draw()
+        if self.is_dark:
+            self.overlay.draw()
+            self.weather_particle_list.draw()
+            self.overlay2.draw()
+        else:
+            self.weather_particle_list.draw()
+        self.particle_list.draw()
 
-        for i in self.particle_list:
-            i.draw()
-
-        self.overlay2.draw()
 
 
-
-    def on_update(self, dt):
+    def on_update(self,dt):
 
         self.player.update()
 
         self.overlay.update()
 
+        self.weather_particle_list.update()
+
         for i in self.particle_list:
             i.update()
-            if i .center_y < -5:
+            if i.center_y < -5 or i.alpha == 0:
                 i.change_y = (0.1 * random.randrange(0, 50, 1))
                 i.center_y = self.player.center_y + self.player.torch_particle_offset_y
                 i.center_x = self.player.center_x + self.player.torch_particle_offset_x
                 i.alpha = 255
-
 
 
         self.overlay.center_y = self.player.center_y + self.player.torch_particle_offset_y
@@ -203,24 +212,20 @@ class MyGame(arcade.Window):
         self.overlay2.center_y = self.player.center_y
         self.overlay2.center_x = self.player.center_x
 
-
-
-
     def on_key_press(self, symbol, modifiers: int):
-        #print(symbol)
-        if symbol == 119:
-            self.player.change_y = 5
-        elif symbol == 97:
+        print(symbol)
+        #if symbol == 119:
+            #self.player.change_y = 5
+        if symbol == 97:
             self.player.change_x = -5
-        elif symbol == 115:
-            self.player.change_y = -5
+        #elif symbol == 115:
+            #self.player.change_y = -5
         elif symbol == 100:
             self.player.change_x = 5
         elif symbol == 32:
-            if not self.player.jump:
-                #print("set")
-                self.player.jump = True
-                self.player.jump_timer = 5
+            self.player.change_y = 10
+        elif symbol == 111:
+            self.is_dark = not self.is_dark
 
     def on_key_release(self, symbol: int, modifiers: int):
         if symbol == 119:
@@ -231,7 +236,6 @@ class MyGame(arcade.Window):
             self.player.change_y = 0
         elif symbol == 100:
             self.player.change_x = 0
-
 
 
 # -----Main Function--------
