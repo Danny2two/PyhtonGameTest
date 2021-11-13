@@ -49,11 +49,14 @@ class Player(arcade.Sprite):
         self.change_x = 0
         self.change_y = 0
 
+        self.slowingdown = False
+        self.grounded = False
+
         self.jump = False
         self.jump_timer = 0
 
         self.torch_particle_offset_x = -30
-        self.torch_particle_offset_y = 20
+        self.torch_particle_offset_y = 15
 
     def update(self):
         self.center_x += self.change_x
@@ -62,6 +65,7 @@ class Player(arcade.Sprite):
             self.change_y -= (9.8 / 30)
             self.center_y += self.change_y
         elif self.center_y < 100:
+            self.grounded = True
             self.change_y = 0
             self.center_y = 100
         else:
@@ -73,6 +77,12 @@ class Player(arcade.Sprite):
         elif self.change_x > 0:
             self.texture = self.textures[TEXTURE_RIGHT]
             self.torch_particle_offset_x = 30
+
+        if self.slowingdown and self.grounded:
+            if abs(self.change_x) > 0.1:
+                self.change_x = self.change_x * 0.8
+            else:
+                self.change_x = 0
 
 
 class Overlay(arcade.Sprite):
@@ -121,14 +131,30 @@ class Rain(arcade.Sprite):
         self.change_y = -10 *speed_seed
         self.angle = -math.degrees(math.tan(self.change_x/self.change_y))
         self.scale = 2
+        self.splat_time = 0
+        self.textures =[]
+        texture = arcade.load_texture("assets/overlays/rain_splat.png")
+        self.textures.append(texture)
+        texture = arcade.load_texture("assets/overlays/rain_particle.png")
+        self.textures.append(texture)
+        self.texture = texture
 
     def update(self):
-        self.center_x += self.change_x
-        self.center_y += self.change_y
 
-        if self.bottom <= (100 + random.randint(-20,20)):
-            self.bottom = SH + random.randint(5,500)
-            self.center_x = random.randint(50,SW + 400)
+        if self.splat_time > 0:
+            self.splat_time -= 1
+            if self.splat_time == 1:
+                self.texture = self.textures[1]
+                self.bottom = SH + random.randint(5, 500)
+                self.center_x = random.randint(50, SW + 400)
+        elif self.splat_time == 0:
+            self.center_x += self.change_x
+            self.center_y += self.change_y
+            if self.bottom <= (100 + random.randint(-20, 20)):
+                self.texture = self.textures[0]
+                self.splat_time = random.randint(20,60)
+
+
 
 
 # ------MyGame Class--------------
@@ -214,28 +240,36 @@ class MyGame(arcade.Window):
 
     def on_key_press(self, symbol, modifiers: int):
         print(symbol)
+        print(modifiers)
         #if symbol == 119:
             #self.player.change_y = 5
         if symbol == 97:
-            self.player.change_x = -5
+            self.player.slowingdown = False
+            if modifiers == 1:
+                self.player.change_x = -8
+            else:
+                self.player.change_x = -5
         #elif symbol == 115:
             #self.player.change_y = -5
         elif symbol == 100:
-            self.player.change_x = 5
+            self.player.slowingdown = False
+            if modifiers == 1:
+                self.player.change_x = 8
+            else:
+                self.player.change_x = 5
         elif symbol == 32:
-            self.player.change_y = 10
+            if self.player.grounded:
+                self.player.change_y = 10
+                self.player.grounded = False
         elif symbol == 111:
             self.is_dark = not self.is_dark
 
     def on_key_release(self, symbol: int, modifiers: int):
-        if symbol == 119:
-            self.player.change_y = 0
-        elif symbol == 97:
-            self.player.change_x = 0
-        elif symbol == 115:
-            self.player.change_y = 0
-        elif symbol == 100:
-            self.player.change_x = 0
+        if symbol == 97 and self.player.change_x < 0:
+            self.player.slowingdown = True
+
+        elif symbol == 100 and self.player.change_x > 0:
+            self.player.slowingdown = True
 
 
 # -----Main Function--------
