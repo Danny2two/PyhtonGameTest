@@ -7,8 +7,9 @@ Player_scale = 0.3
 Floor_scale = 0.75
 Overlay_scale = 0.5
 
-Tourch_Particle_num = 15
+Torch_Particle_num = 15
 Weather_Particle_num = 100
+Dust_particle_num = 60
 
 TEXTURE_LEFT = 1
 TEXTURE_RIGHT = 0
@@ -55,14 +56,36 @@ class Player(arcade.Sprite):
         self.jump = False
         self.jump_timer = 0
 
+        self.dash_timer = 0
+
         self.torch_particle_offset_x = -30
         self.torch_particle_offset_y = 15
 
-    def update(self):
-        self.center_x += self.change_x
+    def dash(self):
+        if self.dash_timer == 0:
+            self.dash_timer = 60
+            #self.slowingdown = True
+            if self.change_x > 0:
+                self.change_x = 100
+            elif self.change_x < 0:
+                self.change_x = -100
+
+    def update(self,delta_time):
+
+        #print("DashTime" + str(self.dash_timer))
+        if self.dash_timer > 0:
+            self.dash_timer -= 1
+            self.center_x += ((self.change_x * delta_time) * (0.1 * self.dash_timer))
+            if self.change_x > 0:
+                self.angle = 90
+            elif self.change_x < 0:
+                self.angle = -90
+        else:
+            self.center_x += self.change_x * delta_time
+            self.angle = 0
 
         if self.center_y > 100:
-            self.change_y -= (9.8 / 30)
+            self.change_y -= (9.8 * delta_time)
             self.center_y += self.change_y
         elif self.center_y < 100:
             self.grounded = True
@@ -128,7 +151,7 @@ class Rain(arcade.Sprite):
         self.center_y = y
         speed_seed = 0.1 * random.randint(10,50)
         self.change_x = -6 * speed_seed
-        self.change_y = -10 *speed_seed
+        self.change_y = -10 * speed_seed
         self.angle = -math.degrees(math.tan(self.change_x/self.change_y))
         self.scale = 2
         self.splat_time = 0
@@ -140,7 +163,6 @@ class Rain(arcade.Sprite):
         self.texture = texture
 
     def update(self):
-
         if self.splat_time > 0:
             self.splat_time -= 1
             if self.splat_time == 1:
@@ -154,12 +176,30 @@ class Rain(arcade.Sprite):
                 self.texture = self.textures[0]
                 self.splat_time = random.randint(20,60)
 
+class Playerdust(arcade.Sprite):
+    def __init__(self, x, y):
+        super().__init__("assets/player/dust_particle.png")
+        self.center_x = x
+        self.center_y = y
+        self.change_x = (0.1 * random.randrange(-20, 20, 1))
+        self.change_y = (0.1 * random.randrange(-30, 30, 1))
+        self.scale = (0.1 * random.randrange(10, 20, 1))
+        self.change_rot = random.randint(-30, 30)
+        self.change_alpha = (0.1 * random.randint(-100, -50))
 
+    def update(self):
+        self.change_y += (0.2 * random.randint(-2,2))
+        self.center_x += self.change_x
+        self.center_y += self.change_y
+        self.angle += self.change_rot
 
+        if self.alpha > abs(self.change_alpha):
+            self.alpha += self.change_alpha
+        else:
+            self.alpha = 0
 
 # ------MyGame Class--------------
 class MyGame(arcade.Window):
-    _vsync = True
 
     def __init__(self, SW, SH, title):
         super().__init__(SW, SH, title)
@@ -193,18 +233,22 @@ class MyGame(arcade.Window):
 
         #generates torch particles
         self.particle_list = arcade.SpriteList()
-        for i in range(Tourch_Particle_num):
+        for i in range(Torch_Particle_num):
             particle = Torchparticle(SW / 2, SH / 2)
             self.particle_list.append(particle)
+
+        self.dust_particle_list = arcade.SpriteList()
 
     def reset(self):
         pass
 
     def on_draw(self):
         # draws background tiles
-        self.background_tile_list.draw()
 
+        self.background_tile_list.draw()
+        #arcade.draw_rectangle_filled(SW / 2, SH / 2, SW, SH, arcade.color.WHITE)
         self.player.draw()
+        self.dust_particle_list.draw()
 
         if self.is_dark:
             self.overlay.draw()
@@ -218,11 +262,18 @@ class MyGame(arcade.Window):
 
     def on_update(self,dt):
 
-        self.player.update()
+        self.player.update(dt)
 
         self.overlay.update()
 
         self.weather_particle_list.update()
+
+        self.dust_particle_list.update()
+
+        for i in self.dust_particle_list:
+            if i.alpha == 0:
+                i.kill()
+
 
         for i in self.particle_list:
             i.update()
@@ -238,29 +289,43 @@ class MyGame(arcade.Window):
         self.overlay2.center_y = self.player.center_y
         self.overlay2.center_x = self.player.center_x
 
+        if self.player.dash_timer > 0:
+            if self.player.change_x > 0:
+                dust = Playerdust(self.player.right, self.player.center_y - 15)
+            else:
+                dust = Playerdust(self.player.left, self.player.center_y - 15)
+            self.dust_particle_list.append(dust)
+
+
     def on_key_press(self, symbol, modifiers: int):
         print(symbol)
         print(modifiers)
-        #if symbol == 119:
-            #self.player.change_y = 5
+
         if symbol == 97:
             self.player.slowingdown = False
             if modifiers == 1:
-                self.player.change_x = -8
+                self.player.change_x = -300
             else:
-                self.player.change_x = -5
-        #elif symbol == 115:
-            #self.player.change_y = -5
+                self.player.change_x = -200
+
         elif symbol == 100:
             self.player.slowingdown = False
             if modifiers == 1:
-                self.player.change_x = 8
+                self.player.change_x = 300
             else:
-                self.player.change_x = 5
-        elif symbol == 32:
+                self.player.change_x = 200
+
+        elif modifiers == 1:
+            if self.player.change_x > 0:
+                self.player.change_x = 300
+            elif self.player.change_x < 0:
+                self.player.change_x = -300
+
+        if symbol == 32:
             if self.player.grounded:
                 self.player.change_y = 10
                 self.player.grounded = False
+
         elif symbol == 111:
             self.is_dark = not self.is_dark
 
@@ -270,6 +335,13 @@ class MyGame(arcade.Window):
 
         elif symbol == 100 and self.player.change_x > 0:
             self.player.slowingdown = True
+
+    def on_mouse_press(self, x: float, y: float, button: int, modifiers: int):
+        print("Mouse button" + str(button))
+        if button == 4:
+            self.player.dash()
+
+
 
 
 # -----Main Function--------
